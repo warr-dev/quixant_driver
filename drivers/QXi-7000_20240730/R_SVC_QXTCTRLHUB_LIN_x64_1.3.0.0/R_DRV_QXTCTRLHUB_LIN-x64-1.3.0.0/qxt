@@ -1,0 +1,2 @@
+sudo insmod ./qxtpch.ko
+sudo chmod 666 /dev/qxtpch

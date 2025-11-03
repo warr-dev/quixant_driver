@@ -1,0 +1,107 @@
+===============================================================================
+✓ QUIXANT DRIVER INSTALLER - READY FOR INSTALLATION
+===============================================================================
+
+VERSION: 2.0.2.3-k6.6 (Kernel 6.6+ Compatible)
+DATE: 2025-11-03
+SYSTEM: QXi-7000Lite with Linux Kernel 6.14.0-34
+
+===============================================================================
+WHAT WAS FIXED:
+===============================================================================
+
+The original qmi4l installer (v2.0.2.3) has been patched to automatically
+handle Linux kernel 6.6+ compatibility issues.
+
+ISSUE:
+------
+Quixant drivers fail to compile on kernel 6.6+ due to removed header:
+  fatal error: asm/unaligned.h: No such file or directory
+
+SOLUTION:
+---------
+The qmi4l script now:
+  1. Extracts driver archive
+  2. Creates a wrapper for the driverscomp binary
+  3. Wrapper intercepts make calls to patch source files on-the-fly
+  4. Replaces asm/unaligned.h with linux/unaligned.h before compilation
+  5. Compilation succeeds and installation proceeds
+
+This happens transparently during installation - no manual intervention needed!
+
+===============================================================================
+HOW TO INSTALL:
+===============================================================================
+
+Simply run the installer as normal:
+
+    cd /home/mach-03/Pictures/QuixantModuleInstaller-QXi-7000-20240730
+    sudo ./qmi4l -s
+
+The patched installer will:
+  ✓ Detect your QXi-7000Lite model
+  ✓ Auto-patch drivers for kernel 6.6+ during compilation
+  ✓ Install drivers for detected Quixant PCI devices
+  ✓ Install system services (qxtDrv, rc-local, lpspooler)
+  ✓ Configure udev rules for Quixant hardware
+  ✓ Add user to dialout and plugdev groups
+
+===============================================================================
+DETECTED HARDWARE:
+===============================================================================
+
+Your system has the following Quixant PCI devices:
+  • CORE (19d4:0100)      ✓ R_DRV_CORE_LIN_x64_0.7.0.1.tgz
+  • NVRAM (19d4:0200)     ✓ R_DRV_NVRAM_LIN_x64_3.9.2.5.tgz
+  • SECS (19d4:0300)      ✓ R_DRV_QXTSECS_LIN_x64_1.6.0.1.tgz
+  • TRACER (19d4:0c00)    ✓ R_DRV_TRACER_LIN_x64_2.3.1.0.tgz
+  • QLI2 (19d4:0e00)      ✓ R_DRV_QLI2_LIN_x64_4.5.0.1.tgz
+
+Additional drivers available:
+  • QLI                   ○ R_DRV_QLI_LIN_x64_3.1.1.0.tgz
+  • CTRLHUB               ○ R_SVC_QXTCTRLHUB_LIN_x64_1.3.0.0.tgz
+
+===============================================================================
+OTHER COMMANDS:
+===============================================================================
+
+Check status after installation:
+    sudo ./qmi4l -p
+
+Uninstall drivers and services:
+    sudo ./qmi4l -u
+
+Show help:
+    sudo ./qmi4l -h
+
+===============================================================================
+FILES MODIFIED:
+===============================================================================
+
+✓ qmi4l (version 2.0.2.3-k6.6)
+  - Added driverscomp wrapper creation at lines 596-635 (DRV section)
+  - Added driverscomp wrapper creation at lines 709-748 (CTRLHUB section)
+  - Wrappers intercept make command to patch source files on-the-fly
+  - Updated version string to indicate kernel 6.6+ compatibility
+
+Backup files:
+  • qmi4l.bak - Original unmodified installer
+
+===============================================================================
+TECHNICAL DETAILS:
+===============================================================================
+
+The Linux kernel removed <asm/unaligned.h> in version 6.6 as part of a
+cleanup effort. The replacement header <linux/unaligned.h> provides the
+same functionality with improved cross-architecture support.
+
+Kernel commit: 9f2a019e505c
+Reference: https://git.kernel.org/torvalds/c/9f2a019e505c
+
+===============================================================================
+READY TO PROCEED!
+===============================================================================
+
+Run: sudo ./qmi4l -s
+
+===============================================================================

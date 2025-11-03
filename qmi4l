@@ -1,0 +1,1219 @@
+#!/bin/bash
+#---------------------------------------------------------------
+# Copyright 2022, by Quixant P.l.c.
+#
+# NAME
+#    qmi4l 
+#
+# SYNOPSIS
+#   qmi4l [u|U|p|P|h|H]
+#
+# DESCRIPTION
+# -s|-S
+#   Installs all the drivers and services present as .tgz files in drivers subdirectory.
+#   All previously installed Quixant drivers will be removed first.
+#   Drivers files are named R_DRV_<DriverName>_LIN_x64_<Version>.tgz
+#   Service files are named R_SVC_<ServiceName>_LIN_x64_<Version>.tgz
+#   Installs also a few system services that will handling driver loading.
+#
+# -u|-U
+#   Uninstalls installed Drivers and Services
+#
+# -p|-P
+#   Prints currently loaded modules and service status
+#
+# -h|-H| no arguments
+#   Prints command help
+#---------------------------------------------------------------
+#
+
+# 
+# ===  GLOBAL VARIABLES  ==============================================================
+# =====================================================================================
+
+VERSION=2.0.2.3-k6.6
+
+# Regular expression to extract library revision number 
+regex_ver="([0-9]*.[0-9]*.[0-9]*.[0-9]*).tgz"
+
+# Regular expression to extract driver name
+regex_drv="_DRV_(.*)_LIN"
+
+# Regular expression to extract service name
+regex_svc="_SVC_(.*)_LIN"
+
+DEBUG=0 # handles debug printouts (0=disabled and default, 1=enabled)
+
+DRIVER_VER=""
+DRIVER_NAME=""
+SERVICE_VER=""
+SERVICE_NAME=""
+DRIVERS_PATH="/opt/quixant/drivers"
+
+# Some global variables to handle the total number of quinxant serial ports and their indexes
+COM_NUM=0 # it will contain the total number of Quixant common ports
+
+ARCH=$(arch) # it contains the hw arch by which this platform is equipped
+if [ $ARCH == "x86_64" ]; then
+	MIN_COM_INDEX=$((2**63 - 1)) # It contains the min index related to a Quixant serial port. Init value.
+	else 
+	MIN_COM_INDEX=$((2**31 - 1)) # It contains the min index related to a Quixant serial port. Init value.
+fi
+MAX_COM_INDEX=0 # It contains the max index related to a Quixant serial port. Init value.
+LASTPORT="NA" # It contains the name of the Quixant serial port with the highest index.
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  debug
+#  Description:  It shows the output only when the $DEBUG var is set to 1
+# =====================================================================================
+debug() {
+  if [ $DEBUG -eq 1 ]; then
+    echo -n "DEBUG: $1"
+  fi
+}
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  debugNewLine
+#  Description:  It shows the output only when the $DEBUG var is set to 1. 
+#				 A New line char is appended.
+# =====================================================================================
+debugNewLine() {
+  if [ $DEBUG -eq 1 ]; then
+    echo "DEBUG: $1"
+  fi
+}
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  ScanSerialPort
+#  Description:  It scans all the quixant working serial ports to count them and to 
+#				 retrieve their kernel names
+# =====================================================================================
+
+ScanSerialPort () {
+	COM_NUM=0 # Init the Quixant serial port counter
+    for port in /dev/ttyS*; do # scan all the available serial port files
+        	udevadm info --query=all --name="$port" | grep Quixant > /dev/null 
+		if [ $? -eq 0 ]; then # filter only the serial quixant port
+			stty -F "$port" &>/dev/null;
+			if [ $? -eq 0 ]; then # filter only the quixant working serial port
+        		ori_port=$(udevadm info --query=all --name="$port" | grep "N:"| awk -F: '{print $2}') # get the serial port kernel name
+				debug "Originale port name:$ori_port "
+				debug " --> "
+				debug "Port name after renaming:$( basename $port)"
+				debugNewLine ""
+				let "COM_NUM = $COM_NUM + 1" # update the quinxant serial port counter
+				ori_port_index=$(echo $ori_port | awk -F "ttyS" '{print $2 }')
+				debugNewLine "Original port index = $ori_port_index"
+				if [ $ori_port_index -gt $MAX_COM_INDEX ]; then	
+					MAX_COM_INDEX=$ori_port_index # updade the max serial port kernel index. 
+				fi
+				if [ $ori_port_index -lt $MIN_COM_INDEX ]; then	
+					MIN_COM_INDEX=$ori_port_index # updade the min serial port kernel index. 
+				fi
+			fi
+		fi
+    done
+    debugNewLine "Number of Quixant Com = $COM_NUM"
+	debugNewLine "Min COM index = $MIN_COM_INDEX"
+	debugNewLine "Max COM index = $MAX_COM_INDEX"
+	LASTPORT=ttyS$MAX_COM_INDEX # set the serial port kernel name with the highest index
+	debugNewLine "LASTPORT=$LASTPORT"
+
+}
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  copyKernelMod
+#  Description:  Copies the kernel object into the driver path
+# =====================================================================================
+copyKernelMod () {
+  if [ -d "$1" ] ; then
+       # Create the LIBRARY_PATH if it doesn't exist 
+       if [ ! -d "$DRIVERS_PATH"  ] ;  
+then 
+ mkdir -p "$DRIVERS_PATH"
+fi 
+
+# locate kernel object 
+for file in $(ls $1/*.ko); do
+
+ # extract file name without .so extension 
+ drivername=$(basename -s .ko "$file")
+
+ # remove previous kernel object
+ rm -f $drivername.ko
+ 
+ # copy shared object
+ cp $file $drivername-$DRIVER_VER.ko
+   
+ # move ko file to the DRIVERS_PATH
+ mv $drivername-$DRIVER_VER.ko $DRIVERS_PATH
+
+ # move to the DRIVERS_PATH
+ cd $DRIVERS_PATH
+	 
+	     # change the file ownership
+	     chown quixant:quixant $drivername-$DRIVER_VER.ko
+
+ # create symbolic link
+ ln -s $drivername-$DRIVER_VER.ko $drivername.ko
+	 
+	     # change the link ownership
+	     chown -h quixant:quixant $drivername.ko 
+ 
+ # mv to the original directory 
+ cd - 
+
+done
+fi
+}
+
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  uninstall
+#  Description:  uninstalls drivers and system services
+# =====================================================================================
+uninstall () {
+echo "╔─────────────╗"
+echo "│ CLEANING    │"
+echo "╚─────────────╝"
+
+echo "  Removing Services"
+echo "  ─────────────────"
+#check if service qxtDrv is defined
+QXTDRV=$(sudo systemctl list-unit-files --type service -all|grep qxtDrv|wc -l)
+
+if [ $QXTDRV -eq 1 ] ; then
+
+echo -n "  Stopping qxtDrv service................."
+
+sudo systemctl stop qxtDrv >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+echo "OK"
+else
+echo "Error"
+fi       
+
+echo -n "  Removing qxtDrv service................."
+
+sudo systemctl disable qxtDrv >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+echo "OK"
+else
+echo "Error"
+fi 
+
+echo -n "  Removing qxtDrv service files..........."
+
+sudo rm /etc/init.d/qxtDrv 
+echo  "OK"
+
+else
+echo "  qxtDrv service not detected.............OK"
+fi
+
+
+#check if service rc-local is defined
+RCLOCAL=$(sudo systemctl list-unit-files --type service -all|grep rc-local|wc -l)
+if [ $RCLOCAL -eq 1 ] ; then
+
+echo -n "  Stopping rc-local service..............."
+
+sudo systemctl stop rc-local >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+echo "OK"
+else
+echo "Error"
+fi 
+
+echo -n "  Removing rc-local service..............."
+
+sudo systemctl disable rc-local >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+echo "OK"
+else
+echo "Error"
+fi 
+
+echo -n "  Removing rc-local service files........."
+if [ -f /etc/systemd/system/rc-local.service ]; then
+sudo rm /etc/systemd/system/rc-local.service
+fi
+
+if [ -f /usr/lib/systemd/system/rc-local.service ]; then
+sudo rm /usr/lib/systemd/system/rc-local.service
+fi
+if [ -f /etc/rc.local ]; then
+sudo rm /etc/rc.local
+fi
+echo  "OK"
+
+else
+echo "  rc-local service not detected...........OK"
+fi
+
+#check if service lpspooler is defined
+STATUS=$(sudo systemctl list-unit-files --type service -all|grep lpspooler|wc -l)
+if [ $STATUS -eq 1 ] ; then
+
+echo -n "  Stopping lpspooler service.............."
+
+sudo systemctl stop lpspooler >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+echo "OK"
+else
+echo "Error"
+fi 
+
+echo -n "  Removing lpspooler service.............."
+
+sudo systemctl disable lpspooler >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+echo "OK"
+else
+echo "Error"
+fi 
+
+echo -n "  Removing lpspooler service files........"
+if [ -f /etc/systemd/system/lpspooler.service ]; then
+sudo rm /etc/systemd/system/lpspooler.service
+fi
+
+if [ -f /usr/lib/systemd/system/lpspooler.service ]; then
+sudo rm /usr/lib/systemd/system/lpspooler.service
+fi
+if [ -f /etc/rc.local ]; then
+sudo rm /usr/sbin/lpspooler
+fi
+echo  "OK"
+
+else
+echo "  lpspooler service not detected..........OK"
+fi
+
+
+
+# reload systemd daemon
+echo -n "  systemctl daemon reload................."
+
+sudo systemctl daemon-reload >/dev/null 2>&1
+sudo systemctl reset-failed >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+echo "OK"
+else
+echo "Error"
+fi 
+
+echo 
+echo "  Removing Drivers"
+echo "  ────────────────"
+echo -n "  Removing kernel driver files............"   
+
+sudo rm -Rf /opt/quixant/drivers
+echo "OK"
+
+echo 
+echo "  Completing Cleaning"
+echo "  ───────────────────"
+
+# remove /etc/usev/rules.d/91-quixant.rules
+echo -n "  Removing udev conf for Quixant HW......."
+
+if [ -f /etc/udev/rules.d/91-quixant.rules ]; then
+sudo rm /etc/udev/rules.d/91-quixant.rules
+sudo udevadm trigger >/dev/null 2>&1
+fi
+echo "OK"
+
+# remove /root/.numcom, .firstport, .lastport files
+echo -n "  Final cleaning:........................."
+if [ -f /root/.comnum ]; then
+sudo rm /root/.comnum
+fi
+
+if [ -f /root/.firstport ]; then
+sudo rm /root/.firstport
+fi
+
+if [ -f /root/.lastport ]; then
+sudo rm /root/.lastport
+fi
+
+echo "OK"
+
+echo 
+
+}
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  checkarchive
+#  Description:  checks drivers directory contains the proper tgz file for this model
+# =====================================================================================
+
+checkarchive () {  
+echo "╔─────────────╗"
+echo "│ CHECKING    │"
+echo "╚─────────────╝"
+
+# take the name of this model
+#MODEL=$(sudo dmidecode -t system|grep "Product Name:"|cut -d ":" -f 2|cut -d " " -f 2|sed -r 's/\s/_/')
+MODEL=$(sudo dmidecode -t system|grep "Product Name:" | awk -F : '{print "  " $2 }')
+MODEL=${MODEL// /}
+echo " [OK] Model......................: $MODEL"
+
+# checks drivers subdir exists
+if [[ -d ./drivers ]]
+then
+echo " [OK] drivers subdir.............: Present"
+else
+echo " [  ] drivers subdir.............: Not found."
+echo " Exiting...."
+exit 1
+fi
+
+# in case of QX-70, model is set to QXc-70
+if [[ "$MODEL" == "QX-70" ]]
+then
+MODEL=QXc-70
+fi
+
+
+# check that drivers contains a proper named tgz
+# if so, uncompress it
+if [ $(ls drivers|grep -E -i '_.........tgz'|wc -l) -eq 1 ]
+then
+echo " [OK] check on archive...........: Passed"
+ARCHIVE=$(ls drivers|grep -E -i '_.........tgz')
+echo "      [${ARCHIVE}]"
+cd drivers
+tar -xzvf ${ARCHIVE}  >/dev/null 2>&1 
+cd ..
+else
+echo " [XX] check on archive...........: Failed"
+echo
+echo "  drivers subdir contents:"
+ls drivers | awk '{print "  " $line }'
+echo " ────────────────────────────────"
+echo "  Exiting...."
+sleep 1
+exit 1
+fi
+
+}
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  checkdrivers
+#  Description:  checks drivers and services into the archive
+# =====================================================================================
+
+checkdrivers () {  
+# Check for empty directory
+ls -l drivers/.tgz >/dev/null 2>&1
+if [ $? -ne 0 ]; then
+cd drivers
+tar -xzvf $MODEL*.tgz >/dev/null 2>&1
+  cd ..
+  fi
+
+  ls -l drivers/R_DRV_*.tgz >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo " [──] No driver files..."
+    DRIVERS_NUM=0
+  else
+    cd drivers
+    ND1=$(ls R_DRV_*.tgz|wc -l)
+    ND2=$(ls R_SVC_*.tgz|grep CTRLHUB|wc -l)
+    let "DRIVERS_NUM=ND1+ND2"
+
+    echo
+    echo " [OK] Found ${DRIVERS_NUM} driver(s):"
+    ls R_DRV_*.tgz|grep .tgz | awk '{print "  " $line }'
+    ls R_SVC_QXTCTRLHUB*.tgz|grep .tgz | awk '{print "  " $line }'
+    cd ..
+  fi
+  
+  ls -l drivers/R_SVC_*.tgz |grep -v CTRLHUB >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    echo " [──] No service files..."
+    SERVICES_NUM=0
+  else
+    cd drivers
+    SERVICES_NUM=$(ls R_SVC_*.tgz|grep -v CTRLHUB | wc -l)
+	echo
+    echo " [OK] Found ${SERVICES_NUM} service(s):"
+    ls R_SVC_*.tgz| grep .tgz | grep -v CTRLHUB| awk '{print "  " $line }'
+    cd ..
+  fi
+  
+  
+  FOUND_FILES=$(($DRIVERS_NUM + $SERVICES_NUM))
+   if [ $FOUND_FILES -eq 0 ]; then
+    echo " [──] No drivers,no services: Exiting"
+	exit 1
+  fi
+  
+ echo
+ 
+}
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  install
+#  Description:  installs drivers and services
+# =====================================================================================
+
+#the following Quixant devices are handled by this version of installer					
+#IO	     19d4:0100 (aka CORE)
+#NVRAM	 19d4:0200
+#SECS    19d4:0300 (aka QXTSECS)
+#ATS     19d4:0c00 (aka TRACER)
+#QLI     19d4:0d00
+#QLI2	   19d4:0e00
+#QXCOM   19d4:0500
+#CTRLHUB no dev, only SW. It's released formally as a service file R_SVC_... 
+#        but it's made as a kernel driver inside (driverscomp just like other drivers)
+
+install () {
+  echo "╔─────────────╗"
+  echo "│ INSTALLING  │"
+  echo "╚─────────────╝"
+ 
+  echo "  Installing Drivers"
+  echo "  ──────────────────"
+  
+  # drivers installation
+  padding=".........................................."
+  
+  cd drivers
+  #for file in $(ls *DRV*.tgz); do
+  for file in $(find . -name "*DRV*.tgz" -exec basename \{} .po \;); do
+
+    if [[ $file =~ $regex_ver ]]; then DRIVER_VER=${BASH_REMATCH[1]}; fi
+    if [[ $file =~ $regex_drv ]]; then DRIVER_NAME=${BASH_REMATCH[1]}; fi
+        
+    ### if INSTALL_IT is set to 1 here, the script will install all the drivers found in drivers directory,
+    ### even if the corresponding pci device is not present un the system
+    ### this case is used when building OS Image, in which we install ALL drivers without knowing in advance
+    ### which Quixant platform we'll run on. Normally INSTALL_IT is set to 0 here, and driver by driver is is used
+    ### as installation flag (if the pci device is present => installs the driver)
+    INSTALL_IT=${INSTALL_ALL}
+
+    echo
+
+    case "$DRIVER_NAME" in
+    CORE)
+        echo "  file: ${file}"
+        if [ $(lspci -n|grep 19d4:0100|wc -l) -eq 1 ]; then # CORE device found
+          INSTALL_IT=1
+          echo "  CORE device found"
+        else
+          echo "  CORE device not found"
+        fi
+      ;;
+    NVRAM) 
+        echo "  file: ${file}"
+        if [ $(lspci -n|grep 19d4:0200|wc -l) -eq 1 ]; then # NVRAM device found
+          INSTALL_IT=1
+          echo "  NVRAM device found"
+        else
+          echo "  NVRAM device not found"
+        fi
+      ;;
+    QLI2) 
+        echo "  file: ${file}"
+        if [ $(lspci -n|grep 19d4:0e00|wc -l) -eq 1 ]; then # QLI2 device found
+          INSTALL_IT=1
+          echo "  QLI2 device found"
+        else
+          echo "  QLI2 device not found"
+        fi
+      ;;
+    QLI)
+        echo "  file: ${file}"
+        if [ $(lspci -n|grep 19d4:0d00|wc -l) -eq 1 ]; then # QLI device found
+          INSTALL_IT=1
+          echo "  QLI device found"
+        else
+          echo "  QLI device not found"
+        fi
+      ;;
+    SECS)
+        echo "  file: ${file}"
+        if [ $(lspci -n|grep 19d4:0300|wc -l) -eq 1 ]; then # SECS device found (same device can be referred to as SECS or QXTSECS)
+          INSTALL_IT=1
+          echo "  SECS device found"
+        else
+          echo "  SECS device not found"
+        fi  
+      ;;
+    QXTSECS)
+        echo "  file: ${file}"
+        if [ $(lspci -n|grep 19d4:0300|wc -l) -eq 1 ]; then # QXTSECS device found (same device can be referred to as SECS or QXTSECS)
+          INSTALL_IT=1
+          echo "  QXTSECS device found"
+        else
+          echo "  QXTSECS device not found"
+        fi  
+      ;;
+    TRACER)
+        echo "  file: ${file}"
+        if [ $(lspci -n|grep 19d4:0c00|wc -l) -eq 1 ]; then # TRACER device found
+          INSTALL_IT=1
+          echo "  TRACER device found"
+        else
+          echo "  TRACER device not found"
+        fi  
+      ;;
+    QXCOM) 
+        echo "  file: ${file}"
+        if [ $(lspci -n|grep 19d4:0500|wc -l) -ge 1 ]; then # QXCOM device found
+          INSTALL_IT=1
+          echo "  QXCOM device found"
+        else
+          echo "  QXCOM device not found"
+        fi
+      ;;
+    *)
+        echo "  file ${file} skipped by installer..."
+      ;;
+    esac
+    
+
+  if [ "${INSTALL_IT}" -eq 1  ]; then
+    #echo -n "Installing $DRIVER_NAME $DRIVER_VER driver from $file..."
+    title="  Installing $DRIVER_NAME $DRIVER_VER"
+    printf "%s%s" "$title" "${padding:${#title}}"
+      # extract tar file and directory name
+      tar xvf $file  #>/dev/null 2>&1
+      directory=$(ls| grep $DRIVER_NAME |grep -v ".tgz")
+      # echo "directory: $directory"
+
+      # KERNEL 6.6+ FIX: Create a wrapper for driverscomp that patches on-the-fly
+      cd $directory  #>/dev/null 2>&1
+
+      # Backup original driverscomp if not already done
+      if [ ! -f driverscomp.orig ] && [ -f driverscomp ]; then
+        cp driverscomp driverscomp.orig
+
+        # Create wrapper script that intercepts make calls
+        cat > driverscomp << 'WRAPPER_END'
+#!/bin/bash
+# Kernel 6.6+ compatibility wrapper for driverscomp
+mkdir -p .bin_wrapper
+cat > .bin_wrapper/make << 'MAKE_END'
+#!/bin/bash
+for f in *.c; do
+  [ -f "$f" ] && sed -i.k66bak 's|#include <asm/unaligned.h>|#include <linux/unaligned.h>|g' "$f" 2>/dev/null
+done
+exec /usr/bin/make "$@"
+MAKE_END
+chmod +x .bin_wrapper/make
+export PATH="$(pwd)/.bin_wrapper:$PATH"
+./driverscomp.orig "$@"
+result=$?
+rm -rf .bin_wrapper
+exit $result
+WRAPPER_END
+        chmod +x driverscomp
+      fi
+
+      # compile driver
+      ./driverscomp  #>/dev/null 2>&1
+      COMPILE_RESULT=$?
+
+      # only for driver QXCOM we have return code different than 0, so we check on existence of qxcom.ko file
+      if [ $COMPILE_RESULT -ne 0 ] && [ "$DRIVER_NAME" != "QXCOM" ];  then
+        echo "ERROR compiling $DRIVER_NAME $DRIVER_VER"
+        echo 
+        echo "╔───────────────╗"
+        echo "│     ERROR     │"
+        echo "╚───────────────╝"
+        echo "  Deleting directory $directory"
+        cd -  >/dev/null 2>&1  
+        rm -rf $directory  >/dev/null 2>&1
+        echo "  Please double check $DRIVER_NAME $DRIVER_VER"
+        echo
+        echo "  Cleaning up..."
+        uninstall
+        exit;
+      fi
+
+      if [ "$DRIVER_NAME" == "QXCOM" ] && [ ! -f qxcom.ko ]; then
+        echo "ERROR compiling $DRIVER_NAME $DRIVER_VER"
+        echo 
+        echo "╔───────────────╗"
+        echo "│     ERROR     │"
+        echo "╚───────────────╝"
+        echo "  Deleting directory $directory"
+        cd -  >/dev/null 2>&1  
+        rm -rf $directory  >/dev/null 2>&1
+        echo "  Please double check $DRIVER_NAME $DRIVER_VER"
+        echo
+        echo "  Cleaning up..."
+        uninstall
+        exit;
+      fi
+
+
+      cd -  >/dev/null 2>&1
+      
+      # copy kernel object, add version and create the symbolic link
+      copyKernelMod $directory  >/dev/null 2>&1
+
+      
+      # remove directory from tar xvf
+      rm -rf $directory  >/dev/null 2>&1
+     
+      echo "OK"
+
+      INSTALL_IT=0
+  fi
+done
+
+###########################################################
+## installation of drivers named like services (QXTCTRLHUB)
+###########################################################
+  for file in $(find . -name "*SVC*QXTCTRLHUB*.tgz" -exec basename \{} .po \;); do
+
+    if [[ $file =~ $regex_ver ]]; then DRIVER_VER=${BASH_REMATCH[1]}; fi
+    if [[ $file =~ $regex_svc ]]; then DRIVER_NAME=${BASH_REMATCH[1]}; fi
+    
+    echo    
+    #echo "Driver name: ${DRIVER_NAME} version ${DRIVER_VER}"
+
+    case "$DRIVER_NAME" in
+    QXTCTRLHUB)
+    INSTALL_IT=1
+    #echo -n "Installing $DRIVER_NAME $DRIVER_VER driver from $file..."
+    echo "  file: ${file}"
+    title="  Installing $DRIVER_NAME $DRIVER_VER"
+    printf "%s%s" "$title" "${padding:${#title}}"
+      # extract tar file and directory name
+      tar xvf $file  >/dev/null 2>&1
+      directory=$(ls| grep $DRIVER_NAME |grep -v ".tgz")
+      # echo "directory: $directory"
+
+      # KERNEL 6.6+ FIX: Create a wrapper for driverscomp that patches on-the-fly
+      cd $directory  >/dev/null 2>&1
+
+      # Backup original driverscomp if not already done
+      if [ ! -f driverscomp.orig ] && [ -f driverscomp ]; then
+        cp driverscomp driverscomp.orig
+
+        # Create wrapper script that intercepts make calls
+        cat > driverscomp << 'WRAPPER_END'
+#!/bin/bash
+# Kernel 6.6+ compatibility wrapper for driverscomp
+mkdir -p .bin_wrapper
+cat > .bin_wrapper/make << 'MAKE_END'
+#!/bin/bash
+for f in *.c; do
+  [ -f "$f" ] && sed -i.k66bak 's|#include <asm/unaligned.h>|#include <linux/unaligned.h>|g' "$f" 2>/dev/null
+done
+exec /usr/bin/make "$@"
+MAKE_END
+chmod +x .bin_wrapper/make
+export PATH="$(pwd)/.bin_wrapper:$PATH"
+./driverscomp.orig "$@"
+result=$?
+rm -rf .bin_wrapper
+exit $result
+WRAPPER_END
+        chmod +x driverscomp
+      fi
+
+      # compile driver
+      ./driverscomp  >/dev/null 2>&1
+      COMPILE_RESULT=$?
+
+     if [ $COMPILE_RESULT -ne 0 ] && [ "$DRIVER_NAME" != "QXCOM" ];  then
+        echo "ERROR compiling $DRIVER_NAME $DRIVER_VER"
+        echo 
+        echo "╔───────────────╗"
+        echo "│     ERROR     │"
+        echo "╚───────────────╝"
+        echo "  Deleting directory $directory"
+        cd -  >/dev/null 2>&1  
+        rm -rf $directory  >/dev/null 2>&1
+        echo "  Please double check $DRIVER_NAME $DRIVER_VER"
+        echo
+        echo "  Cleaning up..."
+        uninstall
+        exit;
+      fi
+
+    # copy kernel object, add version and create the symbolic link
+      cd ..
+      copyKernelMod $directory >/dev/null 2>&1
+      
+    # remove directory from tar xvf
+      rm -rf $directory  >/dev/null 2>&1
+     
+    echo "OK"
+    INSTALL_IT=0   
+       ;;
+    *)
+        echo -n ""
+        #echo "  file ${file} skipped by installer..."
+      ;;
+    esac
+    
+done
+
+cd ..
+
+
+########################################
+## system services: qxtDrv, rc-local
+########################################
+echo
+echo "  Installing Services"
+echo "  ───────────────────"
+
+# service qxtDrv installation
+echo -n "  Preparing qxtDrv service file..........."
+sudo cp .qmi4l/etc/init.d/qxtDrv /etc/init.d
+sudo chmod +x /etc/init.d/qxtDrv
+echo "OK"
+
+echo -n "  Enabling qxtDrv service................."
+sudo systemctl enable qxtDrv  >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+  echo "OK"
+else
+  echo "Error"
+fi 
+
+echo -n "  Starting qxtDrv service................."
+sudo systemctl start qxtDrv >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+  echo "OK"
+else
+  echo "Error"
+fi 
+
+# service rc-local installation
+echo -n "  Preparing rc-local service files........"
+sudo cp .qmi4l/etc/systemd/system/rc-local.service /etc/systemd/system
+sudo cp .qmi4l/etc/rc.local /etc
+sudo chmod +x /etc/rc.local
+echo "OK"
+   
+echo -n "  Enabling rc-local service..............."
+sudo systemctl enable rc-local >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+  echo "OK"
+else
+  echo "Error"
+fi 
+
+echo -n "  Starting rc-local service..............."
+sudo systemctl start rc-local.service >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+  echo "OK"
+else
+  echo "Error"
+fi 
+
+##################################
+## quixant services: lpspooler,
+##################################
+if [ ${INSTALL_SERVICES} -eq 1 ]; then
+  
+  cd drivers
+  #for file in $(ls *SVC*.tgz); do
+  for file in $(find . -name "*SVC*.tgz" -exec basename \{} .po \;); do
+
+    if [[ $file =~ $regex_ver ]]; then SERVICE_VER=${BASH_REMATCH[1]}; fi
+    if [[ $file =~ $regex_svc ]]; then SERVICE_NAME=${BASH_REMATCH[1]}; fi
+        
+	
+    case "$SERVICE_NAME" in
+    LPSP)
+        #title="  Installing $SERVICE_NAME $SERVICE_VER"
+		#printf "%s%s" "$title" "${padding:${#title}}"
+        #echo "  file: ${file}"
+        
+        # extract tar file and directory name
+        tar xvf $file  >/dev/null 2>&1
+        directory=$(ls| grep $SERVICE_NAME |grep -v ".tgz")
+		#echo "directory: $directory"
+    	# service installation
+		echo -n "  Preparing lpspooler service files......."
+		sudo cp ${directory}/config/lpspooler.service /etc/systemd/system
+		sudo chmod 644 /etc/systemd/system/lpspooler.service
+		sudo cp ${directory}/bin/lpspooler /usr/sbin/lpspooler
+		sudo chmod +x /usr/sbin/lpspooler
+		rm -rf $directory  >/dev/null 2>&1
+		echo "OK"
+   
+		echo -n "  Enabling lpspooler service.............."
+		sudo systemctl enable lpspooler >/dev/null 2>&1
+		if [[ $? -eq 0 ]]; then
+			echo "OK"
+		else
+			echo "Error"
+		fi 
+
+		echo -n "  Starting lpspooler service.............."
+		sudo systemctl start lpspooler >/dev/null 2>&1
+		if [[ $? -eq 0 ]]; then
+			echo "OK"
+		else
+			echo "Error"
+		fi 
+
+      ;;
+    *)
+        echo -n ""
+        #echo "  file ${file} skipped by installer..."
+      ;;
+    esac
+    
+done
+
+cd ..
+
+fi
+
+
+echo
+echo "  Completing Installation"
+echo "  ───────────────────────"
+# copy 91-quixant.rules to /etc/usev/rules.d/91-quixant.rules
+echo -n "  Setting udev conf for Quixant HW........"
+sudo cp .qmi4l/etc/udev/rules.d/91-quixant.rules /etc/udev/rules.d/91-quixant.rules
+sudo udevadm trigger 
+echo "OK"
+
+
+# add current user to groups:
+# dialout (for serial ports)  
+# plugdev (for USB devices)
+echo -n "  User quixant in dialout grp............."
+sudo usermod -a -G dialout quixant  >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+  echo "OK"
+else
+  echo "Error"
+fi 
+
+echo -n "  User quixant in plugdev grp............."
+sudo usermod -a -G plugdev quixant  >/dev/null 2>&1
+if [[ $? -eq 0 ]]; then
+  echo "OK"
+else
+  echo "Error"
+fi 
+echo
+
+}
+
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  printstate
+#  Description:  prints various information
+# =====================================================================================
+printstate () {
+  echo "╔───────────────╗"
+  echo "│ CURRENT STATE │"
+  echo "╚───────────────╝"
+ 
+  echo "  Driver directory"
+  echo "  ────────────────"
+ 
+  # Drivers directory content
+  if [ -d /opt/quixant/drivers ]; then
+      tree /opt/quixant/drivers | awk '{print "  " $line }'| head -n -2
+  else
+    echo "  <empty>"
+  fi
+  
+  echo
+  echo "  Running Quixant Drivers"
+  echo "  ───────────────────────"
+  N1=$(lsmod |grep qxtio |wc -l)
+  N2=$(lsmod |grep qxtnvram |wc -l)
+  N3=$(lsmod |grep qli |wc -l)
+  N4=$(lsmod |grep qxtsecs |wc -l)
+  N5=$(lsmod |grep drvtracer |wc -l)
+  N6=$(lsmod |grep qxcom |wc -l)
+  N7=$(lsmod |grep qxtpch |wc -l)
+  
+  let "DRIVERS=N1+N2+N3+N4+N5+N6+N7"
+
+  if [ ${DRIVERS} -eq 0 ]; then
+    echo "  <none>"
+  else
+
+  # Drivers running at the moment
+    if [ $N1 -gt 0 ]; then echo -n "  "; lsmod |grep qxtio |cut -d " " -f 1; fi
+    if [ $N2 -gt 0 ]; then echo -n "  "; lsmod |grep qxtnvram |cut -d " " -f 1; fi
+    if [ $N3 -gt 0 ]; then echo -n "  "; lsmod |grep qli |cut -d " " -f 1; fi
+    if [ $N4 -gt 0 ]; then echo -n "  "; lsmod |grep qxtsecs |cut -d " " -f 1; fi
+    if [ $N5 -gt 0 ]; then echo -n "  "; lsmod |grep drvtracer |cut -d " " -f 1; fi
+    if [ $N6 -gt 0 ]; then echo -n "  "; lsmod |grep qxcom |cut -d " " -f 1; fi
+    if [ $N7 -gt 0 ]; then echo -n "  "; lsmod |grep qxtpch |cut -d " " -f 1; fi
+
+  fi
+
+  echo
+  echo "  Services Status"
+  echo "  ───────────────"
+  # qxtDr service
+  sudo systemctl status qxtDrv >/dev/null 2>&1
+  if [[ $? -eq 0 ]]; then
+    sudo systemctl status qxtDrv | head -8
+  else
+    echo "  qxtDrv service:"
+    echo "  <empty>"
+  fi
+  
+  echo
+
+  # rc-local service
+  sudo systemctl status rc-local >/dev/null 2>&1
+  if [[ $? -eq 0 ]]; then
+    sudo systemctl status rc-local | head -8
+  else
+    echo "  rc-local service:"
+    echo "  <empty>"
+  fi
+  
+  echo
+
+    # lpspooler service
+  sudo systemctl status lpspooler >/dev/null 2>&1
+  if [[ $? -ne 4 ]]; then ## return code 4 when the service is not defined
+    sudo systemctl status lpspooler | head -8
+  else
+    echo "  lpspooler service:"
+    echo "  <empty>"
+  fi
+
+ 
+  echo
+  echo "  udev Config"
+  echo "  ───────────"
+  echo "  /etc/udev/rules.d/91-quixant.rules:"
+  if [ -f /etc/udev/rules.d/91-quixant.rules ]; then
+      cat /etc/udev/rules.d/91-quixant.rules| awk '{print "  " $line }'
+  else
+      echo "  <empty>"
+  fi
+
+
+
+###############################################
+# last serial ports present on this system
+# (as detected by the kernel), like ttyS9/11
+###############################################
+ScanSerialPort # Scan the quixant serial ports
+
+echo
+echo "  Serial Ports (total ${COM_NUM})"
+echo "  ────────────"
+
+# LASTPORT not found ==> renaming was done
+if [ ! -e /dev/$LASTPORT ]; then
+  ls -l /dev/ttyS*|sort| head -$COM_NUM | awk '{print "  " $NF}'
+
+# LASTPORT not found ==> renaming not done
+else
+  i=${MIN_COM_INDEX}
+    
+  while [ $i -le ${MAX_COM_INDEX} ]
+  do
+    ls -l /dev/ttyS${i}| awk '{print "  " $NF}'
+    (( i++ ))
+  done
+
+fi
+
+
+# if N6 >0 we have qxcom driver loaded, so we have also ttyQ* ports
+if [ $N6 -gt 0 ]; then 
+  NUM_QXCOM=$(ls /dev/ttyQ* |wc -l)
+  echo
+  echo
+
+  echo "  QxCom Ports (total ${NUM_QXCOM})"
+  echo "  ───────────"
+  ls /dev/ttyQ* |sort| awk '{print "  " $NF}' 
+  echo
+fi
+
+}
+
+
+# ===  FUNCTION  ======================================================================
+#         Name:  dochecks
+#  Description:  checks required commands are installed, user quixant is present
+# =====================================================================================
+dochecks () {
+
+  # tree command installed?
+  which tree >/dev/null 2>&1
+  if [[ $? -ne 0 ]]; then
+   echo "tree command not found. Please install it"
+   echo "(sudo apt install tree) and try again."
+   exit 1
+  fi
+
+   # lspci command installed?
+  which lspci >/dev/null 2>&1
+  if [[ $? -ne 0 ]]; then
+   echo "lspci command not found. Please install it"
+   echo "(sudo apt install pciutils) and try again."
+   exit 1
+  fi 
+
+  # Check existence of user "quixant"
+  id -u quixant >/dev/null 2>&1
+  if [[ $? -ne 0 ]]; then
+    echo "User quixant, group quixant is required to exist." 1>&2
+    echo "Please define it and try again" 1>&2
+    exit 1
+  fi
+
+  # Make sure only root can run our script
+  if [[ $EUID -ne 0 ]]; then
+    echo "This script must be run as root" 1>&2
+    exit 1
+  fi
+
+}
+
+# ===  FUNCTION  ======================================================================
+#         Name:  checklibusb
+#  Description:  checks libusb-1.0-0 is installed
+# =====================================================================================
+checklibusb () {
+  if [[ ${INSTALL_SERVICES} -eq 1 ]]; then 
+   # libusb-1.0.0 installed?
+   sudo dpkg -l |grep libusb-1.0-0:amd64 >/dev/null 2>&1
+   #echo $?
+   if [[ $? -ne 0 ]]; then
+    echo "libusb-1.0-0 not detected..."
+    echo "Install it with 'sudo apt install libusb-1.0-0' "
+    echo "and run again this installer" 
+    exit 1
+   #else 
+   #echo "libusb-1.0-0 detected"
+   fi
+  
+   # libusb-1.0.0-dev installed?
+   sudo dpkg -l |grep libusb-1.0-0-dev:amd64 >/dev/null 2>&1
+   #echo $?
+   if [[ $? -ne 0 ]]; then
+    echo "libusb-1.0-0-dev not detected..."
+    echo "Install it with 'sudo apt install libusb-1.0-0-dev' "
+    echo "and run again this installer" 
+    exit 1
+   #else 
+   #echo "libusb-1.0-0-dev detected"
+   fi
+
+  fi
+ 
+}
+
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  help
+#  Description:  prints command synopsis
+# =====================================================================================
+help () {
+  echo " qmi4l [-s|-S|-u|-U|-p|-P|-h|-H]"
+  echo	
+  echo " qmi4l -s | -S   --> installs drivers and services"
+  echo " qmi4l -u | -U   --> removes drivers and services"
+  echo " qmi4l -p | -P   --> prints status of everything"
+  echo " qmi4l -h | -H   --> prints command help (this information)"
+}
+
+# ===  FUNCTION  ======================================================================
+#         Name:  printtitle
+#  Description:  prints banner information
+# =====================================================================================
+printtitle () {
+  clear
+  echo "╔═══════════════════════════════════════╗"
+  echo "║  Quixant Module Installer for Linux   ║"
+  echo "║          Version ${VERSION}              ║"
+  echo "╚═══════════════════════════════════════╝"
+
+  # ┌ ┬ ┐ ├ ┼ ┤ └ ┴ ┘ ─ ─ │ │ 
+  # ╔ ╤ ╗ ╟ ┼ ╢ ╚ ╧ ╝ ═ ─ ║ │ 
+  
+  }
+
+# ===  MAIN  ======================================================================
+#         Name:  qmi4l
+#  Description:  Quixant Module Installer for Linux
+# =====================================================================================
+
+dochecks
+
+printtitle
+
+# PRINT HELP (no arguments provided)
+if [ $# -eq 0 ]; then
+  help
+  exit
+
+# INSTALL all drivers found in ./drivers, used for OS Image creation
+elif [ $1 = "-a" ] || [ $1 = "-A" ]; then
+  checkarchive
+  checkdrivers
+  INSTALL_ALL=1
+  INSTALL_SERVICES=1
+  checklibusb
+  uninstall
+  install
+  printstate
+  exit
+
+# INSTALL a driver only if corresponding device is found
+#  services present inside the tgz, if any, are installed
+elif [ $1 = "-s" ] || [ $1 = "-S" ]; then
+  checkarchive
+  checkdrivers
+  INSTALL_ALL=0
+  INSTALL_SERVICES=1
+  checklibusb
+  uninstall
+  install
+  printstate
+  exit
+
+
+# UNINSTALL   
+elif [ $1 = "-u" ] || [ $1 = "-U" ]; then
+  uninstall
+  printstate
+  exit
+
+# PRINT STATE   
+elif [ $1 = "-p" ]|| [ $1 = "-P" ]; then
+  printstate
+  exit
+
+# PRINT HELP   
+elif [ $1 = "-h" ]|| [ $1 = "-H" ]; then
+  help
+  exit
+
+# PRINT HELP (unexpected or wrong argument)
+else
+  help
+fi
+
+exit

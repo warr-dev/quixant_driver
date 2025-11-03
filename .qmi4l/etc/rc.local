@@ -1,0 +1,122 @@
+#!/bin/bash
+# Make sure that the script will "exit 0" on success or any other
+# value on error.
+#
+# In order to enable or disable this script just change the execution
+# bits.
+#
+# By default this script does nothing.
+
+# Check if rename already occured
+
+# last port detected by kernel:
+# usually ttyS7 or ttyS9
+
+# 
+# ===  GLOBAL VARIABLES  ==============================================================
+# =====================================================================================
+    
+DEBUG=0 # To handle debug printouts (0=disabled and default, 1=enabled)
+
+# Some global variables to handle the total number of quinxant serial ports and their indexes
+COM_NUM=0 # it will contain the total number of Quixant common ports
+
+ARCH=$(arch) # it contains the hw arch by which this platform is equipped
+if [ $ARCH == "x86_64" ]; then
+	MIN_COM_INDEX=$((2**63 - 1)) # It contains the min index related to a Quixant serial port. Init value.
+	else 
+	MIN_COM_INDEX=$((2**31 - 1)) # It contains the min index related to a Quixant serial port. Init value.
+fi
+MAX_COM_INDEX=0 # It contains the max index related to a Quixant serial port. Init value.
+LASTPORT="NA" # It contains the name of the Quixant serial port with the highest index.
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  debug
+#  Description:  It shows the output only when the $DEBUG var is set to 1
+# =====================================================================================
+debug() {
+	
+  if [ $DEBUG -eq 1 ]; then
+    echo -n "DEBUG: $1"
+  fi
+}
+
+# 
+# ===  FUNCTION  ======================================================================
+#         Name:  debugNewLine
+#  Description:  It shows the output only when the $DEBUG var is set to 1. 
+#				 A New line char is appended.
+# =====================================================================================
+debugNewLine() {
+  if [ $DEBUG -eq 1 ]; then
+    echo "DEBUG: $1"
+  fi
+}
+
+# ===  FUNCTION  ======================================================================
+#         Name:  ScanSerialPort
+#  Description:  It scans all the quixant working serial ports to count them and to 
+#				 retrieve their kernel names
+# =====================================================================================
+ScanSerialPort () {
+	COM_NUM=0 # Init the Quixant serial port counter
+    for port in /dev/ttyS*; do # scan all the available serial port files
+        	udevadm info --query=all --name="$port" | grep Quixant > /dev/null 
+		if [ $? -eq 0 ]; then # filter only the serial quixant port
+			stty -F "$port" &>/dev/null;
+			if [ $? -eq 0 ]; then # filter only the quixant working serial port
+        		ori_port=$(udevadm info --query=all --name="$port" | grep "N:"| awk -F: '{print $2}') # get the serial port kernel name
+				debug "Originale port name:$ori_port "
+				debug " --> "
+				debug "Port name after renaming:$( basename $port)"
+				debugNewLine ""
+				let "COM_NUM = $COM_NUM + 1" # update the quinxant serial port counter
+				ori_port_index=$(echo $ori_port | awk -F "ttyS" '{print $2 }')
+				debugNewLine "Original port index = $ori_port_index"
+				if [ $ori_port_index -gt $MAX_COM_INDEX ]; then	
+					MAX_COM_INDEX=$ori_port_index # updade the max serial port kernel index. 
+				fi
+				if [ $ori_port_index -lt $MIN_COM_INDEX ]; then	
+					MIN_COM_INDEX=$ori_port_index # updade the min serial port kernel index. 
+				fi
+			fi
+		fi
+    done
+    debugNewLine "Number of Quixant Com = $COM_NUM"
+	debugNewLine "Min COM index = $MIN_COM_INDEX"
+	debugNewLine "Max COM index = $MAX_COM_INDEX"
+	LASTPORT=ttyS$MAX_COM_INDEX # set the serial port kernel name with the highest index
+	debugNewLine "LASTPORT=$LASTPORT"
+
+}
+
+# MAIN
+ScanSerialPort # Scan serial ports
+
+#after the renaming, the last port for sure will disappear (will be renamed)
+# therefore: if this port exists under /dev, it means renaming has not been done;
+# otherwise: if this port is not under /dev, 
+if [ -e /dev/${LASTPORT} ]; then
+  echo Renaming COM ports ...
+  
+  # /dev/${LASTPORT} found: rename necessary
+  # Serial Port mapping in case of 6 ports
+  mv /dev/ttyS4 /dev/ttyS0
+  mv /dev/ttyS5 /dev/ttyS1
+  mv /dev/ttyS6 /dev/ttyS2
+  mv /dev/ttyS7 /dev/ttyS3
+  mv /dev/ttyS8 /dev/ttyS4
+  mv /dev/ttyS9 /dev/ttyS5
+
+  # Add two more ports 
+
+  if [ $COM_NUM -gt 6 ]
+  then
+    mv /dev/ttyS10 /dev/ttyS6
+    mv /dev/ttyS11 /dev/ttyS7
+  fi
+fi
+
+exit 0
+

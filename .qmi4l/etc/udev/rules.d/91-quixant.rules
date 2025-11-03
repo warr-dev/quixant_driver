@@ -1,0 +1,14 @@
+# Quixant Logging Processor (Atmel)
+SUBSYSTEM=="usb", ATTR{idVendor}=="03eb", ATTR{idProduct}=="7512", MODE:="666", GROUP="dialout"
+# Quixant QB029 Led Board (Atmel)
+SUBSYSTEM=="usb", ATTR{idVendor}=="03eb", ATTR{idProduct}=="7513", MODE:="666", GROUP="dialout"
+# Quixant QB029 Led Board - bootloader (Atmel)
+SUBSYSTEM=="usb", ATTR{idVendor}=="03eb", ATTR{idProduct}=="7501", MODE:="666", GROUP="dialout"
+# Quixant Logging Processor (Quixant)
+SUBSYSTEM=="usb", ATTR{idVendor}=="2ff4", ATTR{idProduct}=="7512", MODE:="666", GROUP="dialout"
+# Quixant QB029 Led Board (Quixant)
+SUBSYSTEM=="usb", ATTR{idVendor}=="2ff4", ATTR{idProduct}=="7513", MODE:="666", GROUP="dialout"
+# Quixant QB029 Led Board (Quixant)
+SUBSYSTEM=="usb", ATTR{idVendor}=="2ff4", ATTR{idProduct}=="7514", MODE:="666", GROUP="dialout"
+# Quixant QB029 Led Board - bootloader (Quixant)
+SUBSYSTEM=="usb", ATTR{idVendor}=="2ff4", ATTR{idProduct}=="7501", MODE:="666", GROUP="dialout"

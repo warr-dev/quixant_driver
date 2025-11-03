@@ -1,0 +1,10 @@
+[H[2J[3J╔═══════════════════════════════════════╗
+║  Quixant Module Installer for Linux   ║
+║          Version 2.0.2.3              ║
+╚═══════════════════════════════════════╝
+ qmi4l [-s|-S|-u|-U|-p|-P|-h|-H]
+
+ qmi4l -s | -S   --> installs drivers and services
+ qmi4l -u | -U   --> removes drivers and services
+ qmi4l -p | -P   --> prints status of everything
+ qmi4l -h | -H   --> prints command help (this information)

@@ -1,0 +1,118 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          qxtDrv  
+# Required-Start:    
+# Required-Stop:     
+# Should-Start:      
+# Should-Stop:       
+# Default-Start: 3 4 5
+# Default-Stop:
+# Short-Description: QUIXANT drivers service
+# Description:       QUIXANT drivers service
+### END INIT INFO
+
+# Dir where .ko files are stored
+DRV_PATH=/opt/quixant/drivers
+
+# List of drivers actually present in DRV_PATH dir
+DRV_LIST=$(ls -l ${DRV_PATH} |grep ^l|awk '{print $9}'| rev | cut -c4- | rev)
+
+
+UPGRADE_DRV () 
+{   
+	#echo -e "\n QMI4L is installing drivers..."	
+	
+    if [ "$1" == "qxtsecs" ] ; then
+        if [ -e "$DRV_PATH/$1.ko" ] ; then
+          echo -n "loading $1 driver..."
+          insmod $DRV_PATH/$1.ko
+          chmod 777 /dev/secS
+        fi	
+
+    elif [ "$1" == "drvtracer" ] ; then
+        if [ -e "$DRV_PATH/$1.ko" ] ; then
+          echo -n "loading $1 driver..."
+          insmod $DRV_PATH/$1.ko
+          chmod 777 /dev/qat
+        fi
+		   
+	elif [ "$1" == "qli" ] ; then
+        if [ -e "$DRV_PATH/$1.ko" ] ; then
+			echo -e "loading $1 driver..."
+			insmod $DRV_PATH/$1.ko
+			chmod 777 /dev/$1
+        fi
+
+    elif [ -e "$DRV_PATH/$1.ko" ] ; then
+        echo -n "loading $1 driver..."
+        insmod $DRV_PATH/$1.ko
+        rm -fr /dev/$1
+        DEV=`cat /proc/devices |grep $1|awk '{print $1}'`
+        for D in ${DEV}; do
+            mknod /dev/$1 c $D 0
+            chmod 666 /dev/$1
+            break;
+        done          
+    fi
+}
+
+
+case "$1" in
+start)  echo "Starting modules..."
+ 
+    #for driver in qxtio qxtnvram qxtsecs drvtracer qli2 qli; do
+    for driver in $DRV_LIST; do
+        if [ -e "$DRV_PATH/${driver}.ko" ]  && [ $(lsmod|grep ${driver}|wc -l)  -eq 0 ]; then
+            UPGRADE_DRV ${driver}
+            echo "done"
+        fi
+    done
+     ;;        
+     
+stop)   echo "Removing modules..."
+
+    #for driver in qxtio qxtnvram qxtsecs drvtracer qli2 qli; do
+    for driver in $DRV_LIST; do
+        if [ -e "$DRV_PATH/${driver}.ko" ]  && [ $(lsmod|grep ${driver}|wc -l)  -eq 1 ]; then
+            echo -n "stopping ${driver}..."
+            rmmod ${driver}
+            echo "Done"
+        fi
+    done
+      ;;
+        
+restart) echo "Restarting modules..."
+
+    #for driver in qxtio qxtnvram qxtsecs drvtracer qli2 qli; do
+    for driver in $DRV_LIST; do
+        if [ -e "$DRV_PATH/${driver}.ko" ]; then
+            echo -n "restarting ${driver}:"
+            if [ $(lsmod|grep ${driver}|wc -l) -eq 1 ]; then
+                rmmod ${driver}
+            fi
+            UPGRADE_DRV ${driver}
+            echo "Done"
+        fi
+    done
+	;;
+        
+reload|force-reload) echo "Not implemented"
+        ;;
+        
+info)   echo "QMI4L: Installed Quixant modules:"
+        tree ${DRV_PATH} | head -n -1
+
+        echo "QMI4L: Running Quixant modules" 
+		lsmod |grep qxtio 
+		lsmod |grep qxtnvram
+		lsmod |grep qxtsecs 
+        lsmod |grep drvtracer 
+        lsmod |grep qli
+        lsmod |grep qxtpch
+      ;;
+        
+*)      echo "Usage: /etc/init.d/qxtDrv {start|stop|restart|reload|force-reload|info}"
+        exit 2
+        ;;
+esac
+exit 0

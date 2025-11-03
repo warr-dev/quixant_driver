@@ -1,0 +1,35 @@
+#!/bin/bash
+# Wrapper for driverscomp that patches source files for kernel 6.6+
+
+# Run original driverscomp to extract sources
+./driverscomp.orig "$@"
+EXIT_CODE=$?
+
+# If extraction failed, exit
+if [ $EXIT_CODE -ne 0 ]; then
+    # Try to patch and recompile
+    echo "Compilation failed, attempting to patch for kernel 6.6+..."
+
+    # Find all .c files that include asm/unaligned.h
+    for cfile in *.c; do
+        if [ -f "$cfile" ] && grep -q "#include <asm/unaligned.h>" "$cfile" 2>/dev/null; then
+            echo "  Patching $cfile..."
+
+            # Create backup
+            cp "$cfile" "$cfile.bak"
+
+            # Replace asm/unaligned.h with linux/unaligned.h
+            sed -i 's|#include <asm/unaligned.h>|#include <linux/unaligned.h>|g' "$cfile"
+        fi
+    done
+
+    # Try to compile again
+    if [ -f "Makefile" ]; then
+        echo "  Recompiling with patched sources..."
+        make clean >/dev/null 2>&1 || true
+        make
+        EXIT_CODE=$?
+    fi
+fi
+
+exit $EXIT_CODE

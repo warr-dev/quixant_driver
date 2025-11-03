@@ -1,0 +1,4 @@
+#!/bin/bash
+
+sudo insmod ./drvtracer.ko
+sudo chmod 777 /dev/qat

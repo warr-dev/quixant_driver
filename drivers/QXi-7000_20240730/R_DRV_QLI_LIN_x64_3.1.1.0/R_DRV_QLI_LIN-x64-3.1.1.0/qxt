@@ -1,0 +1,2 @@
+sudo insmod ./qli.ko
+sudo chmod 777 /dev/qli

@@ -1,0 +1,77 @@
+===============================================================================
+QUIXANT DRIVER - LINUX KERNEL 6.6+ COMPATIBILITY FIX
+===============================================================================
+
+PROBLEM:
+--------
+The Quixant drivers (version dated 20240730) fail to compile on Linux kernel
+6.6 and newer because they reference <asm/unaligned.h>, which was removed
+from the kernel in version 6.6+.
+
+Error message:
+  fatal error: asm/unaligned.h: No such file or directory
+
+Your system: Linux 6.14.0-34-generic
+
+SOLUTION APPLIED:
+-----------------
+A wrapper script has been created for each driver's 'driverscomp' binary.
+These wrappers:
+  1. Run the original driverscomp to extract and compile sources
+  2. If compilation fails, automatically patch the source files
+  3. Replace: #include <asm/unaligned.h>
+     With:    #include <linux/unaligned.h>
+  4. Recompile with the patched sources
+
+DRIVERS PATCHED:
+----------------
+✓ R_DRV_QLI2_LIN_x64_4.5.0.1
+✓ R_DRV_QLI_LIN_x64_3.1.1.0
+✓ R_DRV_QXTSECS_LIN_x64_1.6.0.1
+✓ R_DRV_TRACER_LIN_x64_2.3.1.0
+✓ R_SVC_QXTCTRLHUB_LIN_x64_1.3.0.0
+
+HOW TO INSTALL:
+---------------
+Now you can proceed with the normal installation:
+
+  sudo ./qmi4l -s
+
+This will:
+  - Detect your QXi-7000Lite model
+  - Install drivers for detected Quixant PCI devices
+  - Install system services (qxtDrv, rc-local, lpspooler)
+  - Configure udev rules for Quixant hardware
+
+DETECTED HARDWARE:
+------------------
+Your system has the following Quixant devices:
+  • CORE (19d4:0100)
+  • NVRAM (19d4:0200)
+  • SECS (19d4:0300)
+  • TRACER (19d4:0c00)
+  • QLI2 (19d4:0e00)
+
+OTHER COMMANDS:
+---------------
+  sudo ./qmi4l -p    # Print current driver/service status
+  sudo ./qmi4l -u    # Uninstall all drivers and services
+  sudo ./qmi4l -h    # Show help
+
+FILES MODIFIED:
+---------------
+The following wrapper scripts were created:
+  • drivers/QXi-7000_20240730/R_DRV_*/*/driverscomp (wrapper)
+  • drivers/QXi-7000_20240730/R_DRV_*/*/driverscomp.orig (original binary)
+
+TECHNICAL DETAILS:
+------------------
+Linux kernel 6.6 removed the <asm/unaligned.h> header and replaced it with
+<linux/unaligned.h>. The new header provides the same functionality with
+improved architecture-independent implementations.
+
+Reference: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=9f2a019e505c
+
+===============================================================================
+Generated: 2025-11-03
+===============================================================================
