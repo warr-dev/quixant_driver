@@ -75,26 +75,24 @@ if kernel >= 6.14:
 - Summary of all changes
 - Quick reference for modifications
 
-#### 4. New Utility Scripts
+**KERNEL_6.14_QUICK_REFERENCE.txt**
+- Quick reference card
+- Command reference
+- Troubleshooting tips
+- API changes cheat sheet
 
-**patch_qli_kernel_6.14.sh**
-- Standalone patching script
-- Can be run manually if needed
-- Useful for debugging compilation issues
-- Usage: Run in extracted driver directory
+**KERNEL_6.14_SUMMARY.txt**
+- Executive summary
+- Problem and solution overview
+- Testing results
+- Success indicators
 
-**qli_patch_wrapper.sh**
-- Modular wrapper containing patch logic
-- Auto-detects kernel version
-- Applies appropriate patches
-- Can be integrated into other build systems
+**README_KERNEL_6.14.txt**
+- Documentation index
+- Navigation guide
+- Quick start instructions
 
-**create_qli_wrapper_6.14.sh**
-- Script generator for wrapper creation
-- Used during development
-- Documents wrapper structure
-
-#### 5. Updated Documentation
+#### 4. Updated Documentation
 
 **INSTALLATION_READY.txt**
 - Updated version to 2.0.2.3-k6.14

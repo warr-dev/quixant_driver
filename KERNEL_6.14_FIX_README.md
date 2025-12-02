@@ -159,24 +159,22 @@ fi
 
 ---
 
-## Additional Files Created
+## Documentation Files Created
 
-### 1. patch_qli_kernel_6.14.sh
-Standalone script for manually patching QLI driver sources if needed.
+### 1. KERNEL_6.14_FIX_README.md (this file)
+Comprehensive technical documentation covering all aspects of the kernel 6.14+ compatibility fixes.
 
-**Usage:**
-```bash
-# Extract driver manually
-cd drivers/R_DRV_QLI_LIN-x64-3.1.1.0/
-../../patch_qli_kernel_6.14.sh
-make
-```
+### 2. CHANGELOG.md
+Complete version history and detailed change log.
 
-### 2. qli_patch_wrapper.sh
-Modular wrapper script containing the kernel detection and patching logic.
+### 3. KERNEL_6.14_QUICK_REFERENCE.txt
+Quick reference card with commands, troubleshooting tips, and API changes.
 
-### 3. create_qli_wrapper_6.14.sh
-Script that generates the patching wrapper for integration into qmi4l.
+### 4. KERNEL_6.14_SUMMARY.txt
+Executive summary of the problem, solution, and testing results.
+
+### 5. README_KERNEL_6.14.txt
+Documentation index to help navigate all kernel 6.14 documentation.
 
 ---
 
@@ -282,18 +280,14 @@ Automatic module tracking eliminates the need to pass `THIS_MODULE` explicitly.
    ls -la /tmp/.qmi4l.*/R_DRV_QLI*/driverscomp*
    ```
 
-4. **Manual patching:**
-   ```bash
-   # Use standalone patch script
-   cd /path/to/extracted/driver
-   /path/to/patch_qli_kernel_6.14.sh
-   ```
-
-5. **Check kernel headers:**
+4. **Check kernel headers:**
    ```bash
    # Ensure headers are installed
    sudo apt install linux-headers-$(uname -r)
    ```
+
+5. **Review compilation output:**
+   Look for specific error messages and compare with the fixes documented above.
 
 ---
 

@@ -46,10 +46,10 @@ FILES CHANGED
 qmi4l                           - Enhanced installer (v2.0.2.3-k6.14)
 KERNEL_6.14_FIX_README.md       - Full technical documentation
 CHANGELOG.md                    - Version history and changes
+KERNEL_6.14_QUICK_REFERENCE.txt - Quick reference (this file)
+KERNEL_6.14_SUMMARY.txt         - Executive summary
+README_KERNEL_6.14.txt          - Documentation index
 INSTALLATION_READY.txt          - Updated installation guide
-patch_qli_kernel_6.14.sh        - Standalone patching script
-qli_patch_wrapper.sh            - Modular wrapper script
-create_qli_wrapper_6.14.sh      - Wrapper generator
 
 ================================================================================
 AFFECTED DRIVERS

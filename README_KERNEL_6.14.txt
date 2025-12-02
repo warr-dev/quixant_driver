@@ -39,12 +39,6 @@ DOCUMENTATION INDEX
 │ COMPLETE_DOCUMENTATION.md      Full project documentation               │
 └─────────────────────────────────────────────────────────────────────────┘
 
-🛠️ UTILITY SCRIPTS:
-┌─────────────────────────────────────────────────────────────────────────┐
-│ patch_qli_kernel_6.14.sh       Standalone patching script               │
-│ qli_patch_wrapper.sh           Modular wrapper with patch logic         │
-│ create_qli_wrapper_6.14.sh     Wrapper generation script                │
-└─────────────────────────────────────────────────────────────────────────┘
 
 ================================================================================
 CHOOSE YOUR PATH
@@ -169,11 +163,6 @@ Documentation Files:
 Core Files:
 ├── qmi4l                               Enhanced installer (v2.0.2.3-k6.14)
 └── Makefile                            Build file for test programs
-
-Utility Scripts:
-├── patch_qli_kernel_6.14.sh           Standalone patcher
-├── qli_patch_wrapper.sh               Modular wrapper
-└── create_qli_wrapper_6.14.sh         Wrapper generator
 
 Test Programs:
 ├── test_qxtio.c                       Basic device test

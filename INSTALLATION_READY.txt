@@ -104,9 +104,10 @@ FILES MODIFIED:
 
 New files created:
   • KERNEL_6.14_FIX_README.md - Comprehensive technical documentation
-  • patch_qli_kernel_6.14.sh - Standalone patching script
-  • qli_patch_wrapper.sh - Modular wrapper script
-  • create_qli_wrapper_6.14.sh - Wrapper generation script
+  • CHANGELOG.md - Version history and detailed changes
+  • KERNEL_6.14_QUICK_REFERENCE.txt - Quick reference card
+  • KERNEL_6.14_SUMMARY.txt - Summary of changes
+  • README_KERNEL_6.14.txt - Documentation index
 
 Backup files:
   • qmi4l.bak - Original unmodified installer

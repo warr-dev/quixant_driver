@@ -60,12 +60,8 @@ Documentation Created:
   • CHANGELOG.md - Version history and detailed changes
   • KERNEL_6.14_QUICK_REFERENCE.txt - Quick reference card
   • KERNEL_6.14_SUMMARY.txt - This summary
+  • README_KERNEL_6.14.txt - Documentation index
   • INSTALLATION_READY.txt - Updated installation guide
-
-Utility Scripts:
-  • patch_qli_kernel_6.14.sh - Standalone patching script
-  • qli_patch_wrapper.sh - Modular wrapper
-  • create_qli_wrapper_6.14.sh - Wrapper generator
 
 ================================================================================
 TESTING RESULTS
