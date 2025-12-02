@@ -31,7 +31,7 @@
 # ===  GLOBAL VARIABLES  ==============================================================
 # =====================================================================================
 
-VERSION=2.0.2.3-k6.6
+VERSION=2.0.2.3-k6.14
 
 # Regular expression to extract library revision number 
 regex_ver="([0-9]*.[0-9]*.[0-9]*.[0-9]*).tgz"
@@ -593,7 +593,7 @@ install () {
       directory=$(ls| grep $DRIVER_NAME |grep -v ".tgz")
       # echo "directory: $directory"
 
-      # KERNEL 6.6+ FIX: Create a wrapper for driverscomp that patches on-the-fly
+      # KERNEL 6.6+ & 6.14+ FIX: Create a wrapper for driverscomp that patches on-the-fly
       cd $directory  #>/dev/null 2>&1
 
       # Backup original driverscomp if not already done
@@ -603,13 +603,39 @@ install () {
         # Create wrapper script that intercepts make calls
         cat > driverscomp << 'WRAPPER_END'
 #!/bin/bash
-# Kernel 6.6+ compatibility wrapper for driverscomp
+# Kernel 6.6+ and 6.14+ compatibility wrapper for driverscomp
 mkdir -p .bin_wrapper
 cat > .bin_wrapper/make << 'MAKE_END'
 #!/bin/bash
+# Kernel 6.6+ fix: Replace asm/unaligned.h with linux/unaligned.h
 for f in *.c; do
   [ -f "$f" ] && sed -i.k66bak 's|#include <asm/unaligned.h>|#include <linux/unaligned.h>|g' "$f" 2>/dev/null
 done
+
+# Kernel 6.14+ fixes for QLI driver API changes
+KVER=$(uname -r | cut -d. -f1-2)
+if [[ "$KVER" == "6.14" ]] || [[ "${KVER%%.*}" -gt 6 ]]; then
+  # Fix vfs_mkdir API change: &init_user_ns -> &nop_mnt_idmap
+  for f in *.inl; do
+    [ -f "$f" ] && sed -i.k614bak 's|vfs_mkdir(&init_user_ns,|vfs_mkdir(\&nop_mnt_idmap,|g' "$f" 2>/dev/null
+  done
+
+  # Fix class_create API change: remove THIS_MODULE argument
+  for f in *.inl; do
+    [ -f "$f" ] && sed -i.k614bak2 's|class_create( *THIS_MODULE *, *\([^)]*\) *)|class_create(\1)|g' "$f" 2>/dev/null
+  done
+
+  # Fix static keyword position and make functions static
+  for f in *.c; do
+    if [ -f "$f" ]; then
+      sed -i.k614bak3 's|const static int F\[\]|static const int F[]|g' "$f" 2>/dev/null
+      sed -i.k614bak4 's|^void mmap_open(|static void mmap_open(|g' "$f" 2>/dev/null
+      sed -i.k614bak5 's|^void mmap_close(|static void mmap_close(|g' "$f" 2>/dev/null
+      sed -i.k614bak6 's|^long qledmodule_ioctl_unlocked(|static long qledmodule_ioctl_unlocked(|g' "$f" 2>/dev/null
+    fi
+  done
+fi
+
 exec /usr/bin/make "$@"
 MAKE_END
 chmod +x .bin_wrapper/make
@@ -698,7 +724,7 @@ done
       directory=$(ls| grep $DRIVER_NAME |grep -v ".tgz")
       # echo "directory: $directory"
 
-      # KERNEL 6.6+ FIX: Create a wrapper for driverscomp that patches on-the-fly
+      # KERNEL 6.6+ & 6.14+ FIX: Create a wrapper for driverscomp that patches on-the-fly
       cd $directory  >/dev/null 2>&1
 
       # Backup original driverscomp if not already done
@@ -708,13 +734,39 @@ done
         # Create wrapper script that intercepts make calls
         cat > driverscomp << 'WRAPPER_END'
 #!/bin/bash
-# Kernel 6.6+ compatibility wrapper for driverscomp
+# Kernel 6.6+ and 6.14+ compatibility wrapper for driverscomp
 mkdir -p .bin_wrapper
 cat > .bin_wrapper/make << 'MAKE_END'
 #!/bin/bash
+# Kernel 6.6+ fix: Replace asm/unaligned.h with linux/unaligned.h
 for f in *.c; do
   [ -f "$f" ] && sed -i.k66bak 's|#include <asm/unaligned.h>|#include <linux/unaligned.h>|g' "$f" 2>/dev/null
 done
+
+# Kernel 6.14+ fixes for QLI driver API changes
+KVER=$(uname -r | cut -d. -f1-2)
+if [[ "$KVER" == "6.14" ]] || [[ "${KVER%%.*}" -gt 6 ]]; then
+  # Fix vfs_mkdir API change: &init_user_ns -> &nop_mnt_idmap
+  for f in *.inl; do
+    [ -f "$f" ] && sed -i.k614bak 's|vfs_mkdir(&init_user_ns,|vfs_mkdir(\&nop_mnt_idmap,|g' "$f" 2>/dev/null
+  done
+
+  # Fix class_create API change: remove THIS_MODULE argument
+  for f in *.inl; do
+    [ -f "$f" ] && sed -i.k614bak2 's|class_create( *THIS_MODULE *, *\([^)]*\) *)|class_create(\1)|g' "$f" 2>/dev/null
+  done
+
+  # Fix static keyword position and make functions static
+  for f in *.c; do
+    if [ -f "$f" ]; then
+      sed -i.k614bak3 's|const static int F\[\]|static const int F[]|g' "$f" 2>/dev/null
+      sed -i.k614bak4 's|^void mmap_open(|static void mmap_open(|g' "$f" 2>/dev/null
+      sed -i.k614bak5 's|^void mmap_close(|static void mmap_close(|g' "$f" 2>/dev/null
+      sed -i.k614bak6 's|^long qledmodule_ioctl_unlocked(|static long qledmodule_ioctl_unlocked(|g' "$f" 2>/dev/null
+    fi
+  done
+fi
+
 exec /usr/bin/make "$@"
 MAKE_END
 chmod +x .bin_wrapper/make

@@ -2,30 +2,47 @@
 ✓ QUIXANT DRIVER INSTALLER - READY FOR INSTALLATION
 ===============================================================================
 
-VERSION: 2.0.2.3-k6.6 (Kernel 6.6+ Compatible)
-DATE: 2025-11-03
-SYSTEM: QXi-7000Lite with Linux Kernel 6.14.0-34
+VERSION: 2.0.2.3-k6.14 (Kernel 6.6+ & 6.14+ Compatible)
+DATE: 2025-12-02
+SYSTEM: QXi-7000Lite with Linux Kernel 6.14.0-36
 
 ===============================================================================
 WHAT WAS FIXED:
 ===============================================================================
 
 The original qmi4l installer (v2.0.2.3) has been patched to automatically
-handle Linux kernel 6.6+ compatibility issues.
+handle Linux kernel 6.6+ and 6.14+ compatibility issues.
 
-ISSUE:
-------
+KERNEL 6.6+ ISSUES:
+-------------------
 Quixant drivers fail to compile on kernel 6.6+ due to removed header:
   fatal error: asm/unaligned.h: No such file or directory
+
+KERNEL 6.14+ ISSUES (QLI Driver):
+----------------------------------
+1. vfs_mkdir API changed from user_namespace to mnt_idmap
+   error: passing argument 1 of 'vfs_mkdir' from incompatible pointer type
+
+2. class_create API simplified to single argument
+   error: too many arguments to function 'class_create'
+
+3. Code style warnings treated as errors
+   warning: 'static' is not at beginning of declaration
+   warning: no previous prototype for function
 
 SOLUTION:
 ---------
 The qmi4l script now:
   1. Extracts driver archive
   2. Creates a wrapper for the driverscomp binary
-  3. Wrapper intercepts make calls to patch source files on-the-fly
-  4. Replaces asm/unaligned.h with linux/unaligned.h before compilation
-  5. Compilation succeeds and installation proceeds
+  3. Wrapper detects kernel version automatically
+  4. Applies kernel 6.6+ fixes: asm/unaligned.h → linux/unaligned.h
+  5. Applies kernel 6.14+ fixes:
+     - vfs_mkdir: &init_user_ns → &nop_mnt_idmap
+     - class_create: Remove THIS_MODULE parameter
+     - Fix static keyword position
+     - Make local functions static
+  6. Compilation succeeds and installation proceeds
 
 This happens transparently during installation - no manual intervention needed!
 
@@ -78,11 +95,18 @@ Show help:
 FILES MODIFIED:
 ===============================================================================
 
-✓ qmi4l (version 2.0.2.3-k6.6)
-  - Added driverscomp wrapper creation at lines 596-635 (DRV section)
-  - Added driverscomp wrapper creation at lines 709-748 (CTRLHUB section)
+✓ qmi4l (version 2.0.2.3-k6.14)
+  - Added driverscomp wrapper creation at lines 596-649 (DRV section)
+  - Added driverscomp wrapper creation at lines 727-780 (CTRLHUB section)
   - Wrappers intercept make command to patch source files on-the-fly
-  - Updated version string to indicate kernel 6.6+ compatibility
+  - Auto-detects kernel version and applies appropriate patches
+  - Updated version string to indicate kernel 6.14+ compatibility
+
+New files created:
+  • KERNEL_6.14_FIX_README.md - Comprehensive technical documentation
+  • patch_qli_kernel_6.14.sh - Standalone patching script
+  • qli_patch_wrapper.sh - Modular wrapper script
+  • create_qli_wrapper_6.14.sh - Wrapper generation script
 
 Backup files:
   • qmi4l.bak - Original unmodified installer
@@ -91,12 +115,27 @@ Backup files:
 TECHNICAL DETAILS:
 ===============================================================================
 
+Kernel 6.6+ Changes:
+--------------------
 The Linux kernel removed <asm/unaligned.h> in version 6.6 as part of a
 cleanup effort. The replacement header <linux/unaligned.h> provides the
 same functionality with improved cross-architecture support.
 
 Kernel commit: 9f2a019e505c
 Reference: https://git.kernel.org/torvalds/c/9f2a019e505c
+
+Kernel 6.14+ Changes:
+---------------------
+1. VFS layer refactored to use mount ID mapping (mnt_idmap) instead of
+   user namespaces for improved ID-mapped mount support.
+
+2. Device class API simplified - class_create() now automatically tracks
+   module ownership without requiring THIS_MODULE parameter.
+
+3. Compiler strictness increased - warnings about code style and missing
+   prototypes now treated as errors in some configurations.
+
+For detailed information, see: KERNEL_6.14_FIX_README.md
 
 ===============================================================================
 READY TO PROCEED!
