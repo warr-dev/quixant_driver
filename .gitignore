@@ -1,0 +1,52 @@
+# Compiled executables
+test_qxtio
+test_qxtio_buttons
+test_qxtio_live
+core_io_example
+button_monitor
+
+# Build artifacts
+*.o
+*.ko
+*.mod
+*.mod.c
+*.a
+*.so
+*.dylib
+
+# Backup files
+*.bak
+*.orig
+*.backup
+*~
+
+# Debug and log files
+*.log
+debug.txt
+qmi4l_debug.log
+
+# Temporary directories
+temp_patch/
+.tmp/
+tmp/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Driver compilation temporary files
+.bin_wrapper/
+*.k66bak
+*.k614bak*
+
+# Extracted driver directories (they're in .tgz archives)
+drivers/R_DRV_*/
+drivers/R_SVC_*/
+!drivers/*.tgz
